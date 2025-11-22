@@ -69,10 +69,16 @@ function hideStatus() {
 function esc(s) {
     return String(s ?? "").replace(/[&<>"']/g, m => ({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[m]));
 }
-function fmtNum(v) {
+function formatSurfaceDisplay(v) {
     if (v == null || v === "") return "";
     const n = Number(String(v).replace(',', '.'));
-    return isFinite(n) ? n.toLocaleString('fr-BE') : esc(v);
+    return Number.isFinite(n)
+        ? n.toLocaleString('fr-BE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+        : esc(v);
+}
+
+function fmtNum(v) {
+    return formatSurfaceDisplay(v);
 }
 // La fonction pad n'est plus utilisée pour l'export Excel des surfaces, 
 // mais est conservée car elle est utile pour le PDF.
@@ -299,8 +305,10 @@ function applyEdit(row, key, value) {
     box.className = 'edit-box';
     box.contentEditable = true;
     box.dataset.key = key;
-    box.textContent = row[key] ?? '';
+    const rawValue = row[key] ?? '';
+    box.textContent = opts.formatSurface ? formatSurfaceDisplay(rawValue) : rawValue;
     box.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); box.blur(); } });
+    box.addEventListener('focus', () => { if (opts.formatSurface) { box.textContent = row[key] ?? ''; } });
     box.addEventListener('blur', () => applyEdit(row, key, box.textContent));
     td.appendChild(box);
     return td;
@@ -363,8 +371,8 @@ function render(rows) {
         tr.appendChild(editableCell(r,'capakey'));
         tr.appendChild(editableCell(r,'nature'));
         tr.appendChild(editableCell(r,'natureLabel'));
-        tr.appendChild(editableCell(r,'surfaceTaxable',{small:true,align:'right'}));
-        const empPPTd = editableCell(r,'empPP_m2',{small:true,align:'right',advanced:true});
+        tr.appendChild(editableCell(r,'surfaceTaxable',{small:true,align:'right',formatSurface:true}));
+        const empPPTd = editableCell(r,'empPP_m2',{small:true,align:'right',advanced:true,formatSurface:true});
         empPPTd.classList.add('compact-col');
         tr.appendChild(empPPTd);
 
@@ -373,7 +381,7 @@ function render(rows) {
         excedentTd.innerHTML=`<span class="computed-value">${fmtNum(r.excedent_m2)}</span>`;
         tr.appendChild(excedentTd);
 
-        const servitudeTd=editableCell(r,'servitudePrincipale',{small:true,align:'right',advanced:true});
+        const servitudeTd=editableCell(r,'servitudePrincipale',{small:true,align:'right',advanced:true,formatSurface:true});
         servitudeTd.classList.add('compact-col');
         tr.appendChild(servitudeTd);
 
@@ -381,7 +389,7 @@ function render(rows) {
         zoneLocTd.style.minWidth='120px';
         tr.appendChild(zoneLocTd);
 
-        const empJudTd=editableCell(r,'empPPJudiciaire',{small:true,align:'right',advanced:true});
+        const empJudTd=editableCell(r,'empPPJudiciaire',{small:true,align:'right',advanced:true,formatSurface:true});
         empJudTd.classList.add('compact-col');
         tr.appendChild(empJudTd);
 
