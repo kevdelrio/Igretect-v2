@@ -437,7 +437,7 @@ function initSortable() {
             if (evt.oldIndex === evt.newIndex) return;
             const [movedItem] = base.splice(evt.oldIndex, 1);
             base.splice(evt.newIndex, 0, movedItem);
-            render(base);
+             render(base);   
             saveState();
         },
     });
