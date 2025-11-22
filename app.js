@@ -537,7 +537,10 @@ async function exportExcel() {
         const ownerFirsts=owners.map(o=>(o.first||"").toString());
         const allFirstEmpty=ownerFirsts.every(v=>String(v).trim()==="");
 
-        const rowData=[index+1,it.divCad||"",it.section||"",it.number||"",it.natureLabel||it.nature||"",ha,a,ca,ownerLasts.join('\n'),ownerFirsts.join('\n'),owners.map(o=>(o.zipCode||"").toString()).join('\n'),owners.map(o=>o.municipality||"").join('\n'),owners.map(o=>o.street||"").join('\n'),owners.map(o=>(o.number||"").toString()).join('\n'),'', '', '', '', '', '',it.servitudePrincipale||"",it.zoneLocation||"",it.empPPJudiciaire||""];
+        const hasEmpPP = it.empPP_m2 !== '' && it.empPP_m2 != null && Number.isFinite(toNumber(it.empPP_m2));
+        const { ha: empHa, a: empA, ca: empCa } = hasEmpPP ? m2toHaACa(it.empPP_m2) : { ha: '', a: '', ca: '' };
+
+        const rowData=[index+1,it.divCad||"",it.section||"",it.number||"",it.natureLabel||it.nature||"",ha,a,ca,ownerLasts.join('\n'),ownerFirsts.join('\n'),owners.map(o=>(o.zipCode||"").toString()).join('\n'),owners.map(o=>o.municipality||"").join('\n'),owners.map(o=>o.street||"").join('\n'),owners.map(o=>(o.number||"").toString()).join('\n'),empHa,empA,empCa,'', '', '',it.servitudePrincipale||"",it.zoneLocation||"",it.empPPJudiciaire||""];
         const addedRow=ws.addRow(rowData);
         const rowNumber = addedRow.number;
         if(allFirstEmpty){
