@@ -564,7 +564,11 @@ async function exportExcel() {
         const hasEmpPP = it.empPP_m2 !== '' && it.empPP_m2 != null && Number.isFinite(toNumber(it.empPP_m2));
         const { ha: empHa, a: empA, ca: empCa } = hasEmpPP ? m2toHaACa(it.empPP_m2) : { ha: '', a: '', ca: '' };
 
-        const rowData=[index+1,it.divCad||"",it.section||"",it.number||"",it.natureLabel||it.nature||"",ha,a,ca,ownerLasts.join('\n'),ownerFirsts.join('\n'),owners.map(o=>(o.zipCode||"").toString()).join('\n'),owners.map(o=>o.municipality||"").join('\n'),owners.map(o=>o.street||"").join('\n'),owners.map(o=>(o.number||"").toString()).join('\n'),empHa,empA,empCa,'', '', '',it.servitudePrincipale||"",it.zoneLocation||"",it.empPPJudiciaire||""];
+        const excedentRaw = it.excedent_m2;
+        const hasExcedent = excedentRaw !== '' && excedentRaw != null && Number.isFinite(toNumber(excedentRaw));
+        const { ha: excHa, a: excA, ca: excCa } = hasExcedent ? m2toHaACa(excedentRaw) : { ha: '', a: '', ca: '' };
+
+        const rowData=[index+1,it.divCad||"",it.section||"",it.number||"",it.natureLabel||it.nature||"",ha,a,ca,ownerLasts.join('\n'),ownerFirsts.join('\n'),owners.map(o=>(o.zipCode||"").toString()).join('\n'),owners.map(o=>o.municipality||"").join('\n'),owners.map(o=>o.street||"").join('\n'),owners.map(o=>(o.number||"").toString()).join('\n'),empHa,empA,empCa,excHa,excA,excCa,it.servitudePrincipale||"",it.zoneLocation||"",it.empPPJudiciaire||""];
         const addedRow=ws.addRow(rowData);
         const rowNumber = addedRow.number;
         if(allFirstEmpty){
@@ -587,11 +591,11 @@ async function exportExcel() {
         });
         const totalM2 = `(F${rowNumber}*10000)+(G${rowNumber}*100)+H${rowNumber}`;
         const empriseM2 = `(O${rowNumber}*10000)+(P${rowNumber}*100)+Q${rowNumber}`;
-        const diffM2 = `MAX(0,${totalM2}-${empriseM2})`;
+        const diffM2 = `${totalM2}-${empriseM2}`;
         const hasInputs = `AND(F${rowNumber}<>"",G${rowNumber}<>"",H${rowNumber}<>"",O${rowNumber}<>"",P${rowNumber}<>"",Q${rowNumber}<>"")`;
-        ws.getCell(`R${rowNumber}`).value = { formula: `IF(${hasInputs},INT(${diffM2}/10000),"")` };
-        ws.getCell(`S${rowNumber}`).value = { formula: `IF(${hasInputs},INT(MOD(${diffM2},10000)/100),"")` };
-        ws.getCell(`T${rowNumber}`).value = { formula: `IF(${hasInputs},MOD(${diffM2},100),"")` };
+        ws.getCell(`R${rowNumber}`).value = { formula: `IF(${hasInputs},INT(${diffM2}/10000),"")`, result: hasExcedent ? excHa : undefined };
+        ws.getCell(`S${rowNumber}`).value = { formula: `IF(${hasInputs},INT(MOD(${diffM2},10000)/100),"")`, result: hasExcedent ? excA : undefined };
+        ws.getCell(`T${rowNumber}`).value = { formula: `IF(${hasInputs},MOD(${diffM2},100),"")`, result: hasExcedent ? excCa : undefined };
         r++;});
         ws.mergeCells(r,1,r,23);C(r,1).value="Excédent d'emprise = contenance - emprise en pleine propriété";C(r,1).alignment={...left,wrapText:false};C(r,1).font={italic:true,color:{argb:'FF555555'}};r+=2;
         ws.mergeCells(r,1,r,23);C(r,1).value=GEO_HEADER.operation;C(r,1).alignment=center;C(r,1).font={bold:true};
