@@ -1,19 +1,20 @@
 /* ========= Constantes GEO ========= */
 const GEO_HEADER = {
-pouvoir: "S.P.G.E.",
-spgeRef: "56088 / 01 / E006",
-operation: "REHABILITATION DE LA STATION D'EPURATION DE RANCE",
-igretecRef: "05 - 61860"
+    pouvoir: "S.P.G.E.",
+    spgeRef: "xxxx/xx/xxxx",
+    operation: "REHABILITATION DE LA STATION D'EPURATION DE RANCE",
+    igretecRef: "05 - 61860"
 };
 /* ========= Helpers ========= */
 const $ = s => document.querySelector(s);
+const tbl = document.getElementById('tbl');
 const tblBody = document.querySelector("#tbl tbody");
 const tableWrap = document.querySelector('.table-wrap');
+const topScrollbar = document.getElementById('tableScrollTop');
+const topScrollbarInner = document.getElementById('tableScrollTopInner');
 const compactLabel = document.querySelector('#btnToggleCompact .label');
 const notificationBar = document.querySelector("#notificationBar");
-const helpBackdrop = document.getElementById('helpModal');
-const btnHelpConflicts = document.getElementById('btnHelpConflicts');
-const btnCloseHelp = document.getElementById('btnCloseHelp');
+const btnParcelles = document.getElementById('btnParcelles');
 let partsRaw = [], parcRaw = [], merged = [], base = [];
 // NOUVEAU : Pour suivre les noms des fichiers uploadés
 let uploadedFiles = { A: [], B: [] };
@@ -26,19 +27,26 @@ function setCompactMode(enabled) {
     if (compactLabel) {
         compactLabel.textContent = compactMode ? 'Vue complète' : 'Vue compacte';
     }
+    updateTopScrollbar();
 }
 
-function openHelpModal() {
-    if (!helpBackdrop) return;
-    helpBackdrop.style.display = 'flex';
-    helpBackdrop.setAttribute('aria-hidden', 'false');
-    if (btnCloseHelp) btnCloseHelp.focus();
+function updateTopScrollbar() {
+    if (!topScrollbarInner || !tableWrap || !topScrollbar) return;
+    const width = Math.max((tbl?.scrollWidth) || tableWrap.scrollWidth, tableWrap.clientWidth);
+    topScrollbarInner.style.width = `${width}px`;
+    topScrollbar.scrollLeft = tableWrap.scrollLeft;
 }
 
-function closeHelpModal() {
-    if (!helpBackdrop) return;
-    helpBackdrop.style.display = 'none';
-    helpBackdrop.setAttribute('aria-hidden', 'true');
+function setupScrollSync() {
+    if (!topScrollbar || !tableWrap) return;
+    topScrollbar.addEventListener('scroll', () => { tableWrap.scrollLeft = topScrollbar.scrollLeft; });
+    tableWrap.addEventListener('scroll', () => { if (topScrollbar) topScrollbar.scrollLeft = tableWrap.scrollLeft; });
+    tableWrap.addEventListener('wheel', (e) => {
+        if (Math.abs(e.deltaY) > Math.abs(e.deltaX)) {
+            tableWrap.scrollLeft += e.deltaY;
+        }
+    }, { passive: true });
+    updateTopScrollbar();
 }
 
 function setStatus(message, type = 'info', duration = 0) {
@@ -61,10 +69,39 @@ function hideStatus() {
 function esc(s) {
     return String(s ?? "").replace(/[&<>"']/g, m => ({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[m]));
 }
+function normalizeNumberString(input) {
+    const raw = String(input ?? "").trim();
+    if (!raw) return "";
+    const noSpaces = raw.replace(/\s+/g, "");
+    const hasComma = noSpaces.includes(',');
+    const hasDot = noSpaces.includes('.');
+    let normalized = noSpaces;
+
+    if (hasComma && hasDot) {
+        if (noSpaces.lastIndexOf('.') > noSpaces.lastIndexOf(',')) {
+            normalized = noSpaces.replace(/,/g, '');
+        } else {
+            normalized = noSpaces.replace(/\./g, '').replace(',', '.');
+        }
+    } else if (hasComma) {
+        const commaCount = (noSpaces.match(/,/g) || []).length;
+        normalized = commaCount > 1 ? noSpaces.replace(/,/g, '') : noSpaces.replace(',', '.');
+    }
+
+    return normalized.replace(/[^0-9.\-]/g, '');
+}
+
+function formatSurfaceDisplay(v) {
+    const normalized = normalizeNumberString(v);
+    if (!normalized) return "";
+    const n = Number(normalized);
+    return Number.isFinite(n)
+        ? n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+        : esc(v);
+}
+
 function fmtNum(v) {
-    if (v == null || v === "") return "";
-    const n = Number(String(v).replace(',', '.'));
-    return isFinite(n) ? n.toLocaleString('fr-BE') : esc(v);
+    return formatSurfaceDisplay(v);
 }
 // La fonction pad n'est plus utilisée pour l'export Excel des surfaces, 
 // mais est conservée car elle est utile pour le PDF.
@@ -89,7 +126,8 @@ function titleCaseSmart(raw) {
 }
 function toAscii(s) { return stripAccents(s).replace(/[^\x20-\x7E]/g, ''); }
 function toNumber(v) {
-    const n = Number(String(v ?? "").replace(",", "."));
+    const normalized = normalizeNumberString(v);
+    const n = Number(normalized);
     return Number.isFinite(n) ? n : 0;
 }
 function sumNumbers(...vals) { return vals.reduce((s, v) => s + toNumber(v), 0); }
@@ -114,10 +152,7 @@ $("#btnRefresh").addEventListener("click", refreshApp);
 $("#q").addEventListener("input", () => render(base));
 $("#btnExcel").addEventListener("click", exportExcel);
 $("#btnPDF").addEventListener("click", exportPDF);
-btnHelpConflicts?.addEventListener("click", openHelpModal);
-btnCloseHelp?.addEventListener("click", closeHelpModal);
-helpBackdrop?.addEventListener("click", (e) => { if (e.target === helpBackdrop) closeHelpModal(); });
-window.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeHelpModal(); });
+btnParcelles?.addEventListener("click", exportParcellesCSV);
 $("#btnAddRow").addEventListener("click", addManualRow);
 $("#btnToggleCompact").addEventListener("click", () => setCompactMode(!compactMode));
 $("#selectAll").addEventListener("click", toggleSelectAll);
@@ -132,6 +167,8 @@ document.addEventListener('paste', (e) => {
 window.addEventListener('load', () => {
     setupDropZones();
     initSortable();
+    setupScrollSync();
+    window.addEventListener('resize', updateTopScrollbar);
     setCompactMode(window.innerWidth < 1200);
 });
 
@@ -150,7 +187,8 @@ function refreshApp() {
     tblBody.innerHTML = "";
     $("#counters").textContent = "";
     hideStatus();
-    $("#btnGo").disabled = true; $("#btnExcel").disabled = true; $("#btnPDF").disabled = true;
+    $("#btnGo").disabled = true; $("#btnExcel").disabled = true; $("#btnPDF").disabled = true; if (btnParcelles) btnParcelles.disabled = true;
+    updateTopScrollbar();
     localStorage.removeItem('cadastralDataBackup');
 }
 function setupDropZones() {
@@ -232,6 +270,7 @@ function hasIdf(rows) { return Array.isArray(rows) && rows.length > 0 && rows.so
 function checkReady() {
     const ok = hasIdf(partsRaw) && hasIdf(parcRaw);
     $("#btnGo").disabled = !ok;
+    if (btnParcelles) btnParcelles.disabled = parcRaw.length === 0;
     if (ok) setStatus("Fichiers prêts à être fusionnés.", 'success', 3000);
 }
 async function readTolerant(file){const ext=(file.name.split('.').pop()||'').toLowerCase();if(ext==="csv")return parseCSV(await readText(file));const buf=await file.arrayBuffer();const wb=XLSX.read(buf,{type:"array"});let all=[];for(const name of wb.SheetNames){const ws=wb.Sheets[name];all=all.concat(sheetToObjects(ws));}return all;}
@@ -257,17 +296,19 @@ function recalcRow(row, changedKey) {
     const surfNotTax = toNumber(row.surfaceNotTaxable);
     const areaCandidate = surfTax + surfNotTax;
     if (areaCandidate > 0) row.areaM2 = areaCandidate;
-    const empPP = toNumber(row.empPP_m2);
-    const empSS = toNumber(row.empSS_m2);
+    const empPPRaw = row.empPP_m2;
+    const empPP = toNumber(empPPRaw);
+    const hasEmpPP = empPPRaw !== '' && empPPRaw != null && !Number.isNaN(empPP);
     if (changedKey !== 'excedent_m2') {
-        row.excedent_m2 = Math.max(0, toNumber(row.areaM2) - (empPP + empSS));
+        const hasArea = row.areaM2 !== '' && row.areaM2 != null && Number.isFinite(toNumber(row.areaM2));
+        row.excedent_m2 = hasArea && hasEmpPP ? Math.max(0, toNumber(row.areaM2) - empPP) : '';
     }
 }
 
 function applyEdit(row, key, value) {
     const numericFields = new Set(['surfaceTaxable', 'surfaceNotTaxable', 'areaM2', 'empPP_m2', 'empSS_m2', 'excedent_m2', 'servitudePrincipale', 'empPPJudiciaire']);
     const cleanValue = (value ?? '').toString().trim();
-    row[key] = numericFields.has(key) ? cleanValue.replace(',', '.') : cleanValue;
+    row[key] = numericFields.has(key) ? normalizeNumberString(cleanValue) : cleanValue;
     if (key === 'nature') {
         const lbl = natureLabel(cleanValue);
         if (lbl) row.natureLabel = lbl;
@@ -290,8 +331,10 @@ function applyEdit(row, key, value) {
     box.className = 'edit-box';
     box.contentEditable = true;
     box.dataset.key = key;
-    box.textContent = row[key] ?? '';
+    const rawValue = row[key] ?? '';
+    box.textContent = opts.formatSurface ? formatSurfaceDisplay(rawValue) : rawValue;
     box.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); box.blur(); } });
+    box.addEventListener('focus', () => { if (opts.formatSurface) { box.textContent = row[key] ?? ''; } });
     box.addEventListener('blur', () => applyEdit(row, key, box.textContent));
     td.appendChild(box);
     return td;
@@ -307,9 +350,7 @@ function fuse(){
         const ow=omap.get(idf)||{list:[],date:""};
         const numero=[p.primaryNumber,p.bisNumber?("bis "+p.bisNumber):"",(p.exponentLetter||"")+(p.exponentNumber||"")].filter(Boolean).join(" ").trim();
         const surfM2=toNumber(p.surfaceVerif)||sumNumbers(p.surfaceTaxable,p.surfaceNotTaxable)||toNumber(p.surfaceTotal)||toNumber(p.parcelleSurface)||0;
-        const empPP_m2=pickNumericByRegex(p,[/emprise.*pleine/,/emprise.*propri/i,/\bpp\b.*emprise/,/emprisepp/]);
-        const empSS_m2=pickNumericByRegex(p,[/emprise.*sous.?sol/,/emprise.*ss\b/,/sous.?sol.*emprise/]);
-        out.push({_selected:false,propertySituationIdf:idf,ownersList:ow.list,countriesNonBE:[...new Set((ow.list||[]).map(o=>String(o.country||'').toUpperCase()).filter(c=>c&&c!=='BE'))].join(', ')||'—',capakey:stripAccents(p.capakey||""),nature:stripAccents(p.nature||""),natureLabel:stripAccents(natureLabel(p.nature)),surfaceTaxable:p.surfaceTaxable||"",surfaceNotTaxable:p.surfaceNotTaxable||"",areaM2:surfM2,empPP_m2,empSS_m2,excedent_m2:Math.max(0,surfM2-(empPP_m2+empSS_m2)),servitudePrincipale:stripAccents(p.servitudePrincipale||""),zoneLocation:stripAccents(p.zoneLocation||""),empPPJudiciaire:stripAccents(p.empPPJudiciaire||""),divCad:stripAccents(p.divCad||""),section:stripAccents(p.section||""),number:stripAccents(numero),partNumber:stripAccents(p.partNumber||""),dateSituation:stripAccents(ow.date||p.dateSituation||"")});
+        out.push({_selected:false,propertySituationIdf:idf,ownersList:ow.list,countriesNonBE:[...new Set((ow.list||[]).map(o=>String(o.country||'').toUpperCase()).filter(c=>c&&c!=='BE'))].join(', ')||'—',capakey:stripAccents(p.capakey||""),nature:stripAccents(p.nature||""),natureLabel:stripAccents(natureLabel(p.nature)),surfaceTaxable:p.surfaceTaxable||"",surfaceNotTaxable:p.surfaceNotTaxable||"",areaM2:surfM2,empPP_m2:'',empSS_m2:'',excedent_m2:'',servitudePrincipale:'',zoneLocation:'',empPPJudiciaire:'',divCad:stripAccents(p.divCad||""),section:stripAccents(p.section||""),number:stripAccents(numero),partNumber:stripAccents(p.partNumber||""),dateSituation:stripAccents(ow.date||p.dateSituation||"")});
     }
     merged=out; base=out.slice(0); render(base); saveState();
     $("#btnExcel").disabled = false; $("#btnPDF").disabled = false;
@@ -354,8 +395,8 @@ function render(rows) {
         tr.appendChild(editableCell(r,'capakey'));
         tr.appendChild(editableCell(r,'nature'));
         tr.appendChild(editableCell(r,'natureLabel'));
-        tr.appendChild(editableCell(r,'surfaceTaxable',{small:true,align:'right'}));
-        const empPPTd = editableCell(r,'empPP_m2',{small:true,align:'right',advanced:true});
+        tr.appendChild(editableCell(r,'surfaceTaxable',{small:true,align:'right',formatSurface:true}));
+        const empPPTd = editableCell(r,'empPP_m2',{small:true,align:'right',advanced:true,formatSurface:true});
         empPPTd.classList.add('compact-col');
         tr.appendChild(empPPTd);
 
@@ -364,7 +405,7 @@ function render(rows) {
         excedentTd.innerHTML=`<span class="computed-value">${fmtNum(r.excedent_m2)}</span>`;
         tr.appendChild(excedentTd);
 
-        const servitudeTd=editableCell(r,'servitudePrincipale',{small:true,align:'right',advanced:true});
+        const servitudeTd=editableCell(r,'servitudePrincipale',{small:true,align:'right',advanced:true,formatSurface:true});
         servitudeTd.classList.add('compact-col');
         tr.appendChild(servitudeTd);
 
@@ -372,13 +413,14 @@ function render(rows) {
         zoneLocTd.style.minWidth='120px';
         tr.appendChild(zoneLocTd);
 
-        const empJudTd=editableCell(r,'empPPJudiciaire',{small:true,align:'right',advanced:true});
+        const empJudTd=editableCell(r,'empPPJudiciaire',{small:true,align:'right',advanced:true,formatSurface:true});
         empJudTd.classList.add('compact-col');
         tr.appendChild(empJudTd);
 
         tblBody.appendChild(tr);
     });
     $("#selectAll").checked = base.length > 0 && base.every(item => item._selected);
+    updateTopScrollbar();
 }
 
 function initSortable() {
@@ -466,6 +508,24 @@ function addRowsFromClipboard(text) {
     }
 }
 
+function exportParcellesCSV() {
+    if (!parcRaw.length) { setStatus("Aucune donnée parcelle à exporter.", 'error', 3000); return; }
+    const headers = Array.from(new Set(parcRaw.flatMap(r => Object.keys(r))));
+    const escapeVal = (val) => `"${String(val ?? '').replace(/"/g, '""')}"`;
+    const lines = [headers.join(';')];
+    parcRaw.forEach(row => {
+        lines.push(headers.map(h => escapeVal(row[h])).join(';'));
+    });
+    const blob = new Blob([lines.join('\n')], { type: 'text/csv;charset=utf-8;' });
+    const stamp = new Date().toISOString().slice(0,10).replace(/-/g,'');
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = `parcelles_${stamp}.csv`;
+    a.click();
+    URL.revokeObjectURL(a.href);
+    setStatus('Fichier des parcelles créé.', 'success', 3000);
+}
+
 // =========================================================================
 // =================== FONCTION EXPORTEXCEL MODIFIÉE =======================
 // =========================================================================
@@ -478,9 +538,11 @@ async function exportExcel() {
         ws.columns=[{width:8},{width:10},{width:9},{width:14},{width:20},{width:5},{width:5},{width:5},{width:22},{width:16},{width:10},{width:18},{width:24},{width:10},{width:5},{width:5},{width:5},{width:5},{width:5},{width:8},{width:14},{width:16},{width:16}];
         const C=(r,c)=>ws.getCell(r,c),center={vertical:'middle',horizontal:'center',wrapText:true},left={vertical:'middle',horizontal:'left',wrapText:true},borderThin={top:{style:'thin'},left:{style:'thin'},right:{style:'thin'},bottom:{style:'thin'}};
         let r=1;
-        ws.mergeCells(r,1,r,23);C(r,1).value="TABLEAU DES EMPRISES";C(r,1).alignment=center;C(r,1).font={bold:true,size:16};r++;
-        ws.mergeCells(r,1,r,23);C(r,1).value="D'après mesurage";C(r,1).alignment=center;C(r,1).font={italic:true,size:11,color:{argb:'FF444444'}};r++;
-        ws.mergeCells(r,1,r,23);C(r,1).value=`POUVOIR EXPROPRIANT : ${GEO_HEADER.pouvoir}`;C(r,1).alignment=center;C(r,1).font={bold:true,size:12};r++;
+        const topFill={type:'pattern',pattern:'solid',fgColor:{argb:grey}};
+        const fillRow=(rowIdx)=>{for(let col=1;col<=23;col++){const cell=C(rowIdx,col);cell.fill=topFill;cell.border=borderThin;}};
+        ws.mergeCells(r,1,r,23);C(r,1).value="TABLEAU DES EMPRISES";C(r,1).alignment=center;C(r,1).font={bold:true,size:16};fillRow(r);r++;
+        ws.mergeCells(r,1,r,23);C(r,1).value="D'après mesurage";C(r,1).alignment=center;C(r,1).font={italic:true,size:11,color:{argb:'FF444444'}};fillRow(r);r++;
+        ws.mergeCells(r,1,r,23);C(r,1).value=`POUVOIR EXPROPRIANT : ${GEO_HEADER.pouvoir}`;C(r,1).alignment=center;C(r,1).font={bold:true,size:12};fillRow(r);r++;
         ws.mergeCells(r,1,r,6);C(r,1).value=`D. SPGE : ${GEO_HEADER.spgeRef}`;C(r,1).alignment=left;C(r,1).font={bold:true};
         ws.mergeCells(r,7,r,14);C(r,7).value=GEO_HEADER.operation;C(r,7).alignment=center;C(r,7).font={bold:true};
         ws.mergeCells(r,15,r,23);C(r,15).value=`D. IGRETEC : ${GEO_HEADER.igretecRef}`;C(r,15).alignment=left;C(r,1).font={bold:true};r+=2;
@@ -494,24 +556,48 @@ async function exportExcel() {
         ws.mergeCells(headTop,23,headBot,23);C(headTop,23).value="Emprise PP (procédure judiciaire)";
         for(let rowNum=headTop;rowNum<=headBot;rowNum++){for(let colNum=1;colNum<=23;colNum++){const cell=ws.getCell(rowNum,colNum);cell.font={bold:true};cell.alignment=center;cell.border=borderThin;if(rowNum===headTop)cell.fill={type:'pattern',pattern:'solid',fgColor:{argb:grey}};else cell.fill={type:'pattern',pattern:'solid',fgColor:{argb:light}};}}
         r=headBot+1;
-        rowsToExport.forEach((it,index)=>{const{ha,a,ca}=m2toHaACa(it.areaM2);const{ha:ppHa,a:ppA,ca:ppCa}=m2toHaACa(it.empPP_m2);const{ha:exHa,a:exA,ca:exCa}=m2toHaACa(it.excedent_m2);const owners=(it.ownersList&&it.ownersList.length)?it.ownersList:[{last:"",first:"",zipCode:"",municipality:"",street:"",number:""}];
-        
-        // MODIFICATION 1 : On ne passe plus les nombres dans `pad()`, on les passe directement.
-        const rowData=[index+1,it.divCad||"",it.section||"",it.number||"",it.natureLabel||it.nature||"",ha,a,ca,owners.map(o=>(o.last||"").toString()).join('\n'),owners.map(o=>(o.first||"").toString()).join('\n'),owners.map(o=>(o.zipCode||"").toString()).join('\n'),owners.map(o=>o.municipality||"").join('\n'),owners.map(o=>o.street||"").join('\n'),owners.map(o=>(o.number||"").toString()).join('\n'),ppHa,ppA,ppCa,exHa,exA,exCa,toNumber(it.servitudePrincipale)||"",it.zoneLocation||"",toNumber(it.empPPJudiciaire)||""];
-        const addedRow=ws.addRow(rowData);
+        rowsToExport.forEach((it,index)=>{const{ha,a,ca}=m2toHaACa(it.areaM2);const owners=(it.ownersList&&it.ownersList.length)?it.ownersList:[{last:"",first:"",zipCode:"",municipality:"",street:"",number:""}];
+        const ownerLasts=owners.map(o=>(o.last||"").toString());
+        const ownerFirsts=owners.map(o=>(o.first||"").toString());
+        const allFirstEmpty=ownerFirsts.every(v=>String(v).trim()==="");
 
-        // MODIFICATION 2 : On applique le format '00' aux cellules concernées.
+        const hasEmpPP = it.empPP_m2 !== '' && it.empPP_m2 != null && Number.isFinite(toNumber(it.empPP_m2));
+        const { ha: empHa, a: empA, ca: empCa } = hasEmpPP ? m2toHaACa(it.empPP_m2) : { ha: '', a: '', ca: '' };
+
+        const excedentRaw = it.excedent_m2;
+        const hasExcedent = excedentRaw !== '' && excedentRaw != null && Number.isFinite(toNumber(excedentRaw));
+        const { ha: excHa, a: excA, ca: excCa } = hasExcedent ? m2toHaACa(excedentRaw) : { ha: '', a: '', ca: '' };
+
+        const rowData=[index+1,it.divCad||"",it.section||"",it.number||"",it.natureLabel||it.nature||"",ha,a,ca,ownerLasts.join('\n'),ownerFirsts.join('\n'),owners.map(o=>(o.zipCode||"").toString()).join('\n'),owners.map(o=>o.municipality||"").join('\n'),owners.map(o=>o.street||"").join('\n'),owners.map(o=>(o.number||"").toString()).join('\n'),empHa,empA,empCa,excHa,excA,excCa,it.servitudePrincipale||"",it.zoneLocation||"",it.empPPJudiciaire||""];
+        const addedRow=ws.addRow(rowData);
+        const rowNumber = addedRow.number;
+        if(allFirstEmpty){
+            ws.mergeCells(rowNumber,9,rowNumber,10);
+            const mergedCell=ws.getCell(rowNumber,9);
+            mergedCell.value=ownerLasts.join('\n');
+            mergedCell.alignment=left;
+            mergedCell.border=borderThin;
+            ws.getCell(rowNumber,10).border=borderThin;
+        }
+
         addedRow.eachCell((cell, colNumber)=>{
             cell.border=borderThin;
             cell.alignment={vertical:'middle',horizontal:(colNumber>=9&&colNumber<=14)?'left':'center',wrapText:true};
-            
+
             const surfaceColumns = [6, 7, 8, 15, 16, 17, 18, 19, 20, 21, 23];
             if (surfaceColumns.includes(colNumber)) {
                 cell.numFmt = '00';
             }
         });
+        const totalM2 = `(F${rowNumber}*10000)+(G${rowNumber}*100)+H${rowNumber}`;
+        const empriseM2 = `(O${rowNumber}*10000)+(P${rowNumber}*100)+Q${rowNumber}`;
+        const diffM2 = `${totalM2}-${empriseM2}`;
+        const hasInputs = `AND(F${rowNumber}<>"",G${rowNumber}<>"",H${rowNumber}<>"",O${rowNumber}<>"",P${rowNumber}<>"",Q${rowNumber}<>"")`;
+        ws.getCell(`R${rowNumber}`).value = { formula: `IF(${hasInputs},INT(${diffM2}/10000),"")`, result: hasExcedent ? excHa : undefined };
+        ws.getCell(`S${rowNumber}`).value = { formula: `IF(${hasInputs},INT(MOD(${diffM2},10000)/100),"")`, result: hasExcedent ? excA : undefined };
+        ws.getCell(`T${rowNumber}`).value = { formula: `IF(${hasInputs},MOD(${diffM2},100),"")`, result: hasExcedent ? excCa : undefined };
         r++;});
-        ws.mergeCells(r,1,r,23);C(r,1).value="Excédent d'emprise = parcelle - ( emprise en pleine propriété + emprise en sous-sol )";C(r,1).alignment={...left,wrapText:false};C(r,1).font={italic:true,color:{argb:'FF555555'}};r+=2;
+        ws.mergeCells(r,1,r,23);C(r,1).value="Excédent d'emprise = contenance - emprise en pleine propriété";C(r,1).alignment={...left,wrapText:false};C(r,1).font={italic:true,color:{argb:'FF555555'}};r+=2;
         ws.mergeCells(r,1,r,23);C(r,1).value=GEO_HEADER.operation;C(r,1).alignment=center;C(r,1).font={bold:true};
         const buffer=await wb.xlsx.writeBuffer();const blob=new Blob([buffer],{type:'application/vnd.openxmlformats-officedocument.spreadsheet.sheet'});const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='tableau_des_emprises.xlsx';document.body.appendChild(a);a.click();a.remove();URL.revokeObjectURL(a.href);
         setStatus('Export Excel terminé avec succès.', 'success', 4000);
