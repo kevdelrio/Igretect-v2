@@ -69,9 +69,32 @@ function hideStatus() {
 function esc(s) {
     return String(s ?? "").replace(/[&<>"']/g, m => ({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[m]));
 }
+function normalizeNumberString(input) {
+    const raw = String(input ?? "").trim();
+    if (!raw) return "";
+    const noSpaces = raw.replace(/\s+/g, "");
+    const hasComma = noSpaces.includes(',');
+    const hasDot = noSpaces.includes('.');
+    let normalized = noSpaces;
+
+    if (hasComma && hasDot) {
+        if (noSpaces.lastIndexOf('.') > noSpaces.lastIndexOf(',')) {
+            normalized = noSpaces.replace(/,/g, '');
+        } else {
+            normalized = noSpaces.replace(/\./g, '').replace(',', '.');
+        }
+    } else if (hasComma) {
+        const commaCount = (noSpaces.match(/,/g) || []).length;
+        normalized = commaCount > 1 ? noSpaces.replace(/,/g, '') : noSpaces.replace(',', '.');
+    }
+
+    return normalized.replace(/[^0-9.\-]/g, '');
+}
+
 function formatSurfaceDisplay(v) {
-    if (v == null || v === "") return "";
-    const n = Number(String(v).replace(',', '.'));
+    const normalized = normalizeNumberString(v);
+    if (!normalized) return "";
+    const n = Number(normalized);
     return Number.isFinite(n)
         ? n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
         : esc(v);
@@ -103,7 +126,8 @@ function titleCaseSmart(raw) {
 }
 function toAscii(s) { return stripAccents(s).replace(/[^\x20-\x7E]/g, ''); }
 function toNumber(v) {
-    const n = Number(String(v ?? "").replace(",", "."));
+    const normalized = normalizeNumberString(v);
+    const n = Number(normalized);
     return Number.isFinite(n) ? n : 0;
 }
 function sumNumbers(...vals) { return vals.reduce((s, v) => s + toNumber(v), 0); }
@@ -284,7 +308,7 @@ function recalcRow(row, changedKey) {
 function applyEdit(row, key, value) {
     const numericFields = new Set(['surfaceTaxable', 'surfaceNotTaxable', 'areaM2', 'empPP_m2', 'empSS_m2', 'excedent_m2', 'servitudePrincipale', 'empPPJudiciaire']);
     const cleanValue = (value ?? '').toString().trim();
-    row[key] = numericFields.has(key) ? cleanValue.replace(',', '.') : cleanValue;
+    row[key] = numericFields.has(key) ? normalizeNumberString(cleanValue) : cleanValue;
     if (key === 'nature') {
         const lbl = natureLabel(cleanValue);
         if (lbl) row.natureLabel = lbl;
@@ -413,7 +437,7 @@ function initSortable() {
             if (evt.oldIndex === evt.newIndex) return;
             const [movedItem] = base.splice(evt.oldIndex, 1);
             base.splice(evt.newIndex, 0, movedItem);
-            render(base);
+             render(base);   
             saveState();
         },
     });
@@ -537,7 +561,10 @@ async function exportExcel() {
         const ownerFirsts=owners.map(o=>(o.first||"").toString());
         const allFirstEmpty=ownerFirsts.every(v=>String(v).trim()==="");
 
-        const rowData=[index+1,it.divCad||"",it.section||"",it.number||"",it.natureLabel||it.nature||"",ha,a,ca,ownerLasts.join('\n'),ownerFirsts.join('\n'),owners.map(o=>(o.zipCode||"").toString()).join('\n'),owners.map(o=>o.municipality||"").join('\n'),owners.map(o=>o.street||"").join('\n'),owners.map(o=>(o.number||"").toString()).join('\n'),'', '', '', '', '', '',it.servitudePrincipale||"",it.zoneLocation||"",it.empPPJudiciaire||""];
+        const hasEmpPP = it.empPP_m2 !== '' && it.empPP_m2 != null && Number.isFinite(toNumber(it.empPP_m2));
+        const { ha: empHa, a: empA, ca: empCa } = hasEmpPP ? m2toHaACa(it.empPP_m2) : { ha: '', a: '', ca: '' };
+
+        const rowData=[index+1,it.divCad||"",it.section||"",it.number||"",it.natureLabel||it.nature||"",ha,a,ca,ownerLasts.join('\n'),ownerFirsts.join('\n'),owners.map(o=>(o.zipCode||"").toString()).join('\n'),owners.map(o=>o.municipality||"").join('\n'),owners.map(o=>o.street||"").join('\n'),owners.map(o=>(o.number||"").toString()).join('\n'),empHa,empA,empCa,'', '', '',it.servitudePrincipale||"",it.zoneLocation||"",it.empPPJudiciaire||""];
         const addedRow=ws.addRow(rowData);
         const rowNumber = addedRow.number;
         if(allFirstEmpty){
