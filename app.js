@@ -1,19 +1,20 @@
 /* ========= Constantes GEO ========= */
 const GEO_HEADER = {
 pouvoir: "S.P.G.E.",
-spgeRef: "56088 / 01 / E006",
+spgeRef: "XXXX / XXX / XXXX",
 operation: "REHABILITATION DE LA STATION D'EPURATION DE RANCE",
 igretecRef: "05 - 61860"
 };
 /* ========= Helpers ========= */
 const $ = s => document.querySelector(s);
+const tbl = document.getElementById('tbl');
 const tblBody = document.querySelector("#tbl tbody");
 const tableWrap = document.querySelector('.table-wrap');
+const topScrollbar = document.getElementById('tableScrollTop');
+const topScrollbarInner = document.getElementById('tableScrollTopInner');
 const compactLabel = document.querySelector('#btnToggleCompact .label');
 const notificationBar = document.querySelector("#notificationBar");
-const helpBackdrop = document.getElementById('helpModal');
-const btnHelpConflicts = document.getElementById('btnHelpConflicts');
-const btnCloseHelp = document.getElementById('btnCloseHelp');
+const btnParcelles = document.getElementById('btnParcelles');
 let partsRaw = [], parcRaw = [], merged = [], base = [];
 // NOUVEAU : Pour suivre les noms des fichiers uploadés
 let uploadedFiles = { A: [], B: [] };
@@ -26,19 +27,26 @@ function setCompactMode(enabled) {
     if (compactLabel) {
         compactLabel.textContent = compactMode ? 'Vue complète' : 'Vue compacte';
     }
+    updateTopScrollbar();
 }
 
-function openHelpModal() {
-    if (!helpBackdrop) return;
-    helpBackdrop.style.display = 'flex';
-    helpBackdrop.setAttribute('aria-hidden', 'false');
-    if (btnCloseHelp) btnCloseHelp.focus();
+function updateTopScrollbar() {
+    if (!topScrollbarInner || !tableWrap || !topScrollbar) return;
+    const width = Math.max((tbl?.scrollWidth) || tableWrap.scrollWidth, tableWrap.clientWidth);
+    topScrollbarInner.style.width = `${width}px`;
+    topScrollbar.scrollLeft = tableWrap.scrollLeft;
 }
 
-function closeHelpModal() {
-    if (!helpBackdrop) return;
-    helpBackdrop.style.display = 'none';
-    helpBackdrop.setAttribute('aria-hidden', 'true');
+function setupScrollSync() {
+    if (!topScrollbar || !tableWrap) return;
+    topScrollbar.addEventListener('scroll', () => { tableWrap.scrollLeft = topScrollbar.scrollLeft; });
+    tableWrap.addEventListener('scroll', () => { if (topScrollbar) topScrollbar.scrollLeft = tableWrap.scrollLeft; });
+    tableWrap.addEventListener('wheel', (e) => {
+        if (Math.abs(e.deltaY) > Math.abs(e.deltaX)) {
+            tableWrap.scrollLeft += e.deltaY;
+        }
+    }, { passive: true });
+    updateTopScrollbar();
 }
 
 function setStatus(message, type = 'info', duration = 0) {
@@ -61,10 +69,16 @@ function hideStatus() {
 function esc(s) {
     return String(s ?? "").replace(/[&<>"']/g, m => ({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[m]));
 }
-function fmtNum(v) {
+function formatSurfaceDisplay(v) {
     if (v == null || v === "") return "";
     const n = Number(String(v).replace(',', '.'));
-    return isFinite(n) ? n.toLocaleString('fr-BE') : esc(v);
+    return Number.isFinite(n)
+        ? n.toLocaleString('fr-BE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+        : esc(v);
+}
+
+function fmtNum(v) {
+    return formatSurfaceDisplay(v);
 }
 // La fonction pad n'est plus utilisée pour l'export Excel des surfaces, 
 // mais est conservée car elle est utile pour le PDF.
@@ -114,10 +128,7 @@ $("#btnRefresh").addEventListener("click", refreshApp);
 $("#q").addEventListener("input", () => render(base));
 $("#btnExcel").addEventListener("click", exportExcel);
 $("#btnPDF").addEventListener("click", exportPDF);
-btnHelpConflicts?.addEventListener("click", openHelpModal);
-btnCloseHelp?.addEventListener("click", closeHelpModal);
-helpBackdrop?.addEventListener("click", (e) => { if (e.target === helpBackdrop) closeHelpModal(); });
-window.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeHelpModal(); });
+btnParcelles?.addEventListener("click", exportParcellesCSV);
 $("#btnAddRow").addEventListener("click", addManualRow);
 $("#btnToggleCompact").addEventListener("click", () => setCompactMode(!compactMode));
 $("#selectAll").addEventListener("click", toggleSelectAll);
@@ -132,6 +143,8 @@ document.addEventListener('paste', (e) => {
 window.addEventListener('load', () => {
     setupDropZones();
     initSortable();
+    setupScrollSync();
+    window.addEventListener('resize', updateTopScrollbar);
     setCompactMode(window.innerWidth < 1200);
 });
 
@@ -150,7 +163,8 @@ function refreshApp() {
     tblBody.innerHTML = "";
     $("#counters").textContent = "";
     hideStatus();
-    $("#btnGo").disabled = true; $("#btnExcel").disabled = true; $("#btnPDF").disabled = true;
+    $("#btnGo").disabled = true; $("#btnExcel").disabled = true; $("#btnPDF").disabled = true; if (btnParcelles) btnParcelles.disabled = true;
+    updateTopScrollbar();
     localStorage.removeItem('cadastralDataBackup');
 }
 function setupDropZones() {
@@ -232,6 +246,7 @@ function hasIdf(rows) { return Array.isArray(rows) && rows.length > 0 && rows.so
 function checkReady() {
     const ok = hasIdf(partsRaw) && hasIdf(parcRaw);
     $("#btnGo").disabled = !ok;
+    if (btnParcelles) btnParcelles.disabled = parcRaw.length === 0;
     if (ok) setStatus("Fichiers prêts à être fusionnés.", 'success', 3000);
 }
 async function readTolerant(file){const ext=(file.name.split('.').pop()||'').toLowerCase();if(ext==="csv")return parseCSV(await readText(file));const buf=await file.arrayBuffer();const wb=XLSX.read(buf,{type:"array"});let all=[];for(const name of wb.SheetNames){const ws=wb.Sheets[name];all=all.concat(sheetToObjects(ws));}return all;}
@@ -290,8 +305,10 @@ function applyEdit(row, key, value) {
     box.className = 'edit-box';
     box.contentEditable = true;
     box.dataset.key = key;
-    box.textContent = row[key] ?? '';
+    const rawValue = row[key] ?? '';
+    box.textContent = opts.formatSurface ? formatSurfaceDisplay(rawValue) : rawValue;
     box.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); box.blur(); } });
+    box.addEventListener('focus', () => { if (opts.formatSurface) { box.textContent = row[key] ?? ''; } });
     box.addEventListener('blur', () => applyEdit(row, key, box.textContent));
     td.appendChild(box);
     return td;
@@ -354,8 +371,8 @@ function render(rows) {
         tr.appendChild(editableCell(r,'capakey'));
         tr.appendChild(editableCell(r,'nature'));
         tr.appendChild(editableCell(r,'natureLabel'));
-        tr.appendChild(editableCell(r,'surfaceTaxable',{small:true,align:'right'}));
-        const empPPTd = editableCell(r,'empPP_m2',{small:true,align:'right',advanced:true});
+        tr.appendChild(editableCell(r,'surfaceTaxable',{small:true,align:'right',formatSurface:true}));
+        const empPPTd = editableCell(r,'empPP_m2',{small:true,align:'right',advanced:true,formatSurface:true});
         empPPTd.classList.add('compact-col');
         tr.appendChild(empPPTd);
 
@@ -364,7 +381,7 @@ function render(rows) {
         excedentTd.innerHTML=`<span class="computed-value">${fmtNum(r.excedent_m2)}</span>`;
         tr.appendChild(excedentTd);
 
-        const servitudeTd=editableCell(r,'servitudePrincipale',{small:true,align:'right',advanced:true});
+        const servitudeTd=editableCell(r,'servitudePrincipale',{small:true,align:'right',advanced:true,formatSurface:true});
         servitudeTd.classList.add('compact-col');
         tr.appendChild(servitudeTd);
 
@@ -372,13 +389,14 @@ function render(rows) {
         zoneLocTd.style.minWidth='120px';
         tr.appendChild(zoneLocTd);
 
-        const empJudTd=editableCell(r,'empPPJudiciaire',{small:true,align:'right',advanced:true});
+        const empJudTd=editableCell(r,'empPPJudiciaire',{small:true,align:'right',advanced:true,formatSurface:true});
         empJudTd.classList.add('compact-col');
         tr.appendChild(empJudTd);
 
         tblBody.appendChild(tr);
     });
     $("#selectAll").checked = base.length > 0 && base.every(item => item._selected);
+    updateTopScrollbar();
 }
 
 function initSortable() {
@@ -464,6 +482,24 @@ function addRowsFromClipboard(text) {
         $("#btnExcel").disabled = false; $("#btnPDF").disabled = false;
         setStatus(`${added} ligne(s) collée(s) depuis Excel.`, 'success', 2500);
     }
+}
+
+function exportParcellesCSV() {
+    if (!parcRaw.length) { setStatus("Aucune donnée parcelle à exporter.", 'error', 3000); return; }
+    const headers = Array.from(new Set(parcRaw.flatMap(r => Object.keys(r))));
+    const escapeVal = (val) => `"${String(val ?? '').replace(/"/g, '""')}"`;
+    const lines = [headers.join(';')];
+    parcRaw.forEach(row => {
+        lines.push(headers.map(h => escapeVal(row[h])).join(';'));
+    });
+    const blob = new Blob([lines.join('\n')], { type: 'text/csv;charset=utf-8;' });
+    const stamp = new Date().toISOString().slice(0,10).replace(/-/g,'');
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = `parcelles_${stamp}.csv`;
+    a.click();
+    URL.revokeObjectURL(a.href);
+    setStatus('Fichier des parcelles créé.', 'success', 3000);
 }
 
 // =========================================================================
