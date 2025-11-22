@@ -1,7 +1,7 @@
 /* ========= Constantes GEO ========= */
 const GEO_HEADER = {
 pouvoir: "S.P.G.E.",
-spgeRef: "56088 / 01 / E006",
+spgeRef: "XXXX / XXX / XXXX",
 operation: "REHABILITATION DE LA STATION D'EPURATION DE RANCE",
 igretecRef: "05 - 61860"
 };
